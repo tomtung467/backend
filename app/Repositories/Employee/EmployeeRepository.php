@@ -6,6 +6,8 @@ use App\Repositories\BaseRepository;
 
 class EmployeeRepository extends BaseRepository implements IEmployeeRepository
 {
+    protected $model = Employee::class;
+
     public function find($id)
     {
         return Employee::find($id);

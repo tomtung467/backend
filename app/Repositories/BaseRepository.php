@@ -5,16 +5,21 @@ abstract class BaseRepository implements IBaseRepository
 {
     protected $model;
 
-    public function __construct(Model $model)
+    public function __construct()
     {
-        $this->model = $model;
+        $this->setModel();
     }
-    public function getModel(){}
+
+    public function getModel()
+    {
+        return $this->model;
+    }
 
     public function setModel()
     {
-        $model = app()->make($this->getModel());
-        $this->model = $model;
+        if (is_string($this->model)) {
+            $this->model = app()->make($this->model);
+        }
     }
 
     public function all(array $with = [])

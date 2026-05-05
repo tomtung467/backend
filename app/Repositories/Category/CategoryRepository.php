@@ -4,6 +4,8 @@ use App\Models\Category;
 use App\Repositories\BaseRepository;
 class CategoryRepository extends BaseRepository implements ICategoryRepository
 {
+    protected $model = Category::class;
+
     public function getAllCategories()
     {
         return Category::all();

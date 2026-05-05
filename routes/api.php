@@ -9,6 +9,7 @@ use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\TableController;
+use App\Http\Controllers\OrderController;
 
 // Public routes
 Route::post('/auth/login', [AuthController::class, 'login']);
@@ -50,6 +51,15 @@ Route::middleware(['auth:api'])->group(function () {
     Route::get('/kitchen/ready-orders', [KitchenController::class, 'getReadyOrders']);
     Route::put('/kitchen/orders/{id}/complete', [KitchenController::class, 'completeOrder']);
     Route::post('/kitchen/orders/{id}/print', [KitchenController::class, 'printOrder']);
+
+    // Order routes
+    Route::get('/orders', [OrderController::class, 'index']);
+    Route::post('/orders', [OrderController::class, 'store']);
+    Route::get('/orders/stats/summary', [OrderController::class, 'getStats']);
+    Route::get('/orders/table/{tableId}', [OrderController::class, 'getByTable']);
+    Route::get('/orders/{id}', [OrderController::class, 'show']);
+    Route::put('/orders/{id}/status', [OrderController::class, 'updateStatus']);
+    Route::delete('/orders/{id}', [OrderController::class, 'cancel']);
 
     // Employee routes
     Route::get('/employees', [EmployeeController::class, 'getEmployees']);
