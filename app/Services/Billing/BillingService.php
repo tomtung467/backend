@@ -6,6 +6,7 @@ use App\Models\Payment;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\Coupon;
+use App\Models\Employee;
 use App\Repositories\Billing\BillingRepository;
 
 interface IBillingService
@@ -32,14 +33,28 @@ class BillingService implements IBillingService
             'order_id' => $data['order_id'],
             'amount' => $data['amount'],
             'payment_method' => $data['payment_method'],
+            'payment_gateway' => $data['payment_gateway'] ?? 'manual',
             'status' => 'completed',
             'transaction_id' => $this->generateTransactionId(),
             'reference_code' => $data['reference_code'] ?? null,
+            'created_by_id' => $this->resolveEmployeeId(),
             'paid_at' => now(),
         ]);
 
-        // Update order status
-        $order->update(['status' => 'paid']);
+        // Update order and release the table when the bill is closed.
+        $order->update([
+            'status' => 'paid',
+            'paid_at' => now(),
+            'payment_requested_at' => null,
+        ]);
+
+        if ($order->table) {
+            $order->table->update([
+                'status' => 'empty',
+                'current_customer_count' => 0,
+                'occupied_since' => null,
+            ]);
+        }
 
         return $payment;
     }
@@ -95,5 +110,19 @@ class BillingService implements IBillingService
     private function calculateTax($amount)
     {
         return ($amount * 10) / 100; // 10% tax
+    }
+
+    private function resolveEmployeeId()
+    {
+        $userId = auth()->id();
+
+        if ($userId) {
+            $employeeId = Employee::where('user_id', $userId)->value('id');
+            if ($employeeId) {
+                return $employeeId;
+            }
+        }
+
+        return Employee::query()->value('id');
     }
 }

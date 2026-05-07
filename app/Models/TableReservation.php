@@ -17,9 +17,14 @@ class TableReservation extends Model
         'reservation_time',
         'number_of_guests',
         'special_requests',
+        'pre_order_items',
         'status',
         'cancelled_at',
         'cancelled_reason',
+    ];
+
+    protected $casts = [
+        'pre_order_items' => 'array',
     ];
 
     protected $dates = [

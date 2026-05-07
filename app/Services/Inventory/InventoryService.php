@@ -26,14 +26,14 @@ class InventoryService implements IInventoryService
     {
         $ingredient = Ingredient::findOrFail($ingredientId);
         
-        $oldQuantity = $ingredient->quantity;
+        $oldQuantity = $ingredient->current_quantity;
         $newQuantity = $oldQuantity + $data['quantity'];
 
         if ($newQuantity < 0) {
             throw new \Exception('Insufficient stock');
         }
 
-        $ingredient->update(['quantity' => $newQuantity]);
+        $ingredient->update(['current_quantity' => $newQuantity]);
 
         // Log the inventory change
         InventoryLog::create([
@@ -51,7 +51,7 @@ class InventoryService implements IInventoryService
 
     public function getLowStockItems()
     {
-        return Ingredient::whereRaw('quantity <= min_stock_level')->get();
+        return Ingredient::whereRaw('current_quantity <= min_quantity')->get();
     }
 
     public function deductFromRecipe($recipeId, $quantity = 1)

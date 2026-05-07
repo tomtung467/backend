@@ -24,6 +24,7 @@ class User extends Authenticatable implements JWTSubject
         'email',
         'password',
         'phone',
+        'role',
     ];
 
     /**
@@ -67,6 +68,19 @@ class User extends Authenticatable implements JWTSubject
     public function roles()
     {
         return $this->belongsToMany(Role::class, 'user_roles');
+    }
+
+    public function hasRole($role): bool
+    {
+        if ($this->role === 'admin') {
+            return true;
+        }
+
+        if (is_array($role)) {
+            return in_array($this->role, $role, true) || $this->roles()->whereIn('name', $role)->exists();
+        }
+
+        return $this->role === $role || $this->roles()->where('name', $role)->exists();
     }
 
     public function auditLogs()

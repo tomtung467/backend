@@ -15,6 +15,8 @@ class Payment extends Model
         'payment_method',
         'status',
         'transaction_id',
+        'payment_gateway',
+        'created_by_id',
         'paid_at',
         'reference_code',
         'notes',

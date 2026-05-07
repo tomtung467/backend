@@ -15,7 +15,8 @@ class KitchenQueueService implements IKitchenQueueService
 {
     public function getQueue()
     {
-        return Order::where('status', '!=', 'completed')
+        return Order::where('status', '!=', 'served')
+            ->where('status', '!=', 'paid')
             ->where('status', '!=', 'cancelled')
             ->with('orderItems.food')
             ->orderBy('created_at')
@@ -44,7 +45,7 @@ class KitchenQueueService implements IKitchenQueueService
     public function completeOrder($orderId)
     {
         $order = Order::findOrFail($orderId);
-        $order->update(['status' => 'completed', 'completed_at' => now()]);
+        $order->update(['status' => 'served', 'actual_completion_time' => now()]);
 
         return $order;
     }

@@ -18,6 +18,7 @@ Route::post('/auth/register', [AuthController::class, 'register']);
 // Menu routes (public)
 Route::get('/menu/categories', [MenuController::class, 'getCategories']);
 Route::get('/menu/categories/{id}/foods', [MenuController::class, 'getCategoryFoods']);
+Route::get('/menu/foods', [MenuController::class, 'getFoods']);
 Route::get('/menu/foods/{id}', [MenuController::class, 'getFoodDetails']);
 Route::get('/menu', [MenuController::class, 'getAllMenus']);
 
@@ -30,6 +31,7 @@ Route::middleware(['auth:api'])->group(function () {
 
     // Menu routes
     Route::post('/menu/foods', [MenuController::class, 'createFood']);
+    Route::post('/menu/foods/{id}', [MenuController::class, 'updateFood']);
     Route::put('/menu/foods/{id}', [MenuController::class, 'updateFood']);
     Route::delete('/menu/foods/{id}', [MenuController::class, 'deleteFood']);
     Route::get('/menu/recipes', [MenuController::class, 'getRecipes']);
@@ -37,12 +39,13 @@ Route::middleware(['auth:api'])->group(function () {
 
     // Inventory routes
     Route::get('/inventory', [InventoryController::class, 'getInventory']);
+    Route::get('/inventory/low-stock', [InventoryController::class, 'getLowStockItems']);
     Route::get('/inventory/{id}', [InventoryController::class, 'getIngredientDetails']);
     Route::post('/inventory/{id}/stock', [InventoryController::class, 'updateStock']);
-    Route::get('/inventory/low-stock', [InventoryController::class, 'getLowStockItems']);
     Route::get('/inventory/{id}/logs', [InventoryController::class, 'getInventoryLogs']);
     Route::post('/inventory/ingredients', [InventoryController::class, 'createIngredient']);
     Route::put('/inventory/ingredients/{id}', [InventoryController::class, 'updateIngredient']);
+    Route::delete('/inventory/ingredients/{id}', [InventoryController::class, 'deleteIngredient']);
 
     // Kitchen routes
     Route::get('/kitchen/queue', [KitchenController::class, 'getQueue']);
@@ -59,6 +62,7 @@ Route::middleware(['auth:api'])->group(function () {
     Route::get('/orders/table/{tableId}', [OrderController::class, 'getByTable']);
     Route::get('/orders/{id}', [OrderController::class, 'show']);
     Route::put('/orders/{id}/status', [OrderController::class, 'updateStatus']);
+    Route::post('/orders/{id}/request-payment', [OrderController::class, 'requestPayment']);
     Route::delete('/orders/{id}', [OrderController::class, 'cancel']);
 
     // Employee routes
@@ -67,15 +71,18 @@ Route::middleware(['auth:api'])->group(function () {
     Route::post('/employees', [EmployeeController::class, 'createEmployee']);
     Route::put('/employees/{id}', [EmployeeController::class, 'updateEmployee']);
     Route::get('/employees/{id}/kpi', [EmployeeController::class, 'getKPIData']);
-    Route::get('/employees/{id}/status', [EmployeeController::class, 'updateEmployeeStatus']);
+    Route::put('/employees/{id}/status', [EmployeeController::class, 'updateEmployeeStatus']);
     Route::get('/departments', [EmployeeController::class, 'getDepartments']);
     Route::get('/departments/{id}/employees', [EmployeeController::class, 'getEmployeesByDepartment']);
 
     // Payment routes
+    Route::get('/payments', [PaymentController::class, 'getPayments']);
     Route::post('/payments', [PaymentController::class, 'processPayment']);
     Route::get('/payments/{id}', [PaymentController::class, 'getPaymentDetails']);
     Route::get('/orders/{id}/payments', [PaymentController::class, 'getOrderPayments']);
     Route::post('/orders/{id}/invoice', [PaymentController::class, 'generateInvoice']);
+    Route::get('/invoices', [PaymentController::class, 'getInvoices']);
+    Route::get('/invoices/current', [PaymentController::class, 'getCurrentBills']);
     Route::get('/invoices/{id}', [PaymentController::class, 'getInvoice']);
     Route::post('/orders/{id}/coupon', [PaymentController::class, 'applyCoupon']);
     Route::post('/coupons/validate', [PaymentController::class, 'validateCoupon']);

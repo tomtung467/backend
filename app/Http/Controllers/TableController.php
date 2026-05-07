@@ -17,9 +17,52 @@ class TableController extends Controller
         $this->tableService = $tableService;
     }
 
-    public function getAllTables()
+    public function getAllTables(Request $request)
     {
-        $tables = Table::all();
+        if ($request->boolean('summary')) {
+            $tables = Table::query()
+                ->select('id', 'table_number', 'capacity', 'section', 'status', 'current_customer_count', 'occupied_since')
+                ->with(['orders' => function ($query) {
+                    $query->select('id', 'table_id', 'status', 'payment_requested_at')
+                        ->whereNotIn('status', ['paid', 'cancelled'])
+                        ->withCount(['orderItems as ready_items_count' => fn ($items) => $items->where('status', 'ready')])
+                        ->latest();
+                }])
+                ->orderBy('table_number')
+                ->get()
+                ->map(function ($table) {
+                    $activeOrders = $table->orders;
+                    $table->active_orders_count = $activeOrders->count();
+                    $table->ready_items_count = $activeOrders->sum('ready_items_count');
+                    $table->payment_requested_at = optional(
+                        $activeOrders->whereNotNull('payment_requested_at')->sortByDesc('payment_requested_at')->first()
+                    )->payment_requested_at;
+                    unset($table->orders);
+
+                    return $table;
+                });
+
+            return response()->json($tables);
+        }
+
+        $tables = Table::with(['orders' => function ($query) {
+            $query->whereNotIn('status', ['paid', 'cancelled'])
+                ->with('orderItems.food')
+                ->latest();
+        }])->orderBy('table_number')->get()->map(function ($table) {
+            $activeOrders = $table->orders;
+            $table->active_orders_count = $activeOrders->count();
+            $table->ready_items_count = $activeOrders
+                ->flatMap(fn ($order) => $order->orderItems)
+                ->where('status', 'ready')
+                ->count();
+            $table->payment_requested_at = optional(
+                $activeOrders->whereNotNull('payment_requested_at')->sortByDesc('payment_requested_at')->first()
+            )->payment_requested_at;
+
+            return $table;
+        });
+
         return response()->json($tables);
     }
 
@@ -32,11 +75,16 @@ class TableController extends Controller
     public function updateTableStatus(Request $request, $id)
     {
         $validated = $request->validate([
-            'status' => 'required|string|in:available,occupied,reserved,maintenance',
+            'status' => 'required|string|in:empty,available,occupied,reserved,maintenance',
         ]);
 
         $table = Table::findOrFail($id);
-        $table->update(['status' => $validated['status']]);
+        $status = $validated['status'] === 'available' ? 'empty' : $validated['status'];
+        $table->update([
+            'status' => $status,
+            'occupied_since' => $status === 'occupied' ? ($table->occupied_since ?? now()) : null,
+            'current_customer_count' => $status === 'occupied' ? max(1, (int) $table->current_customer_count) : 0,
+        ]);
 
         return response()->json($table);
     }
@@ -52,7 +100,11 @@ class TableController extends Controller
             return response()->json(['error' => 'Table cannot accommodate guests'], 400);
         }
 
-        $table->update(['status' => 'occupied']);
+        $table->update([
+            'status' => 'occupied',
+            'current_customer_count' => $validated['number_of_guests'],
+            'occupied_since' => now(),
+        ]);
         return response()->json($table);
     }
 
@@ -60,7 +112,11 @@ class TableController extends Controller
     {
         $table = Table::findOrFail($id);
         $this->tableService->releaseTable($table);
-        $table->update(['status' => 'available']);
+        $table->update([
+            'status' => 'empty',
+            'current_customer_count' => 0,
+            'occupied_since' => null,
+        ]);
 
         return response()->json($table);
     }
@@ -75,7 +131,26 @@ class TableController extends Controller
             'reservation_time' => 'required|date_format:Y-m-d H:i:s',
             'number_of_guests' => 'required|integer|min:1',
             'special_requests' => 'nullable|string',
+            'pre_order_items' => 'nullable|array',
         ]);
+
+        $table = Table::findOrFail($validated['table_id']);
+        if ($table->status !== 'empty') {
+            return response()->json(['message' => 'Only empty tables can be reserved'], 422);
+        }
+
+        $reservationTime = \Carbon\Carbon::parse($validated['reservation_time']);
+        $hasConflict = TableReservation::where('table_id', $validated['table_id'])
+            ->whereIn('status', ['pending', 'confirmed'])
+            ->whereBetween('reservation_time', [
+                $reservationTime->copy()->subHours(2),
+                $reservationTime->copy()->addHours(2),
+            ])
+            ->exists();
+
+        if ($hasConflict) {
+            return response()->json(['message' => 'This table already has a reservation around that time'], 422);
+        }
 
         $reservation = TableReservation::create($validated);
         return response()->json($reservation, 201);

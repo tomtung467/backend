@@ -12,6 +12,16 @@ class Table extends Model
         'status',
         'section',
         'notes',
+        'current_customer_count',
+        'occupied_since',
+        'reserved_until',
+        'is_active',
+    ];
+
+    protected $casts = [
+        'occupied_since' => 'datetime',
+        'reserved_until' => 'datetime',
+        'is_active' => 'boolean',
     ];
 
     public function orders()

@@ -19,6 +19,10 @@ class RoleMiddleware
 
         $user = Auth::user();
 
+        if ($user->hasRole('admin')) {
+            return $next($request);
+        }
+
         // Check if user has any of the required roles
         foreach ($roles as $role) {
             if ($user->hasRole($role)) {

@@ -18,12 +18,28 @@ class PaymentController extends Controller
         $this->billingService = $billingService;
     }
 
+    public function getPayments(Request $request)
+    {
+        $query = Payment::query()
+            ->when($request->filled('status'), fn ($query) => $query->where('status', $request->query('status')))
+            ->latest();
+
+        if ($request->boolean('summary')) {
+            $payments = $query->limit((int) $request->query('limit', 10))
+                ->get(['id', 'order_id', 'amount', 'payment_method', 'status', 'paid_at', 'created_at']);
+        } else {
+            $payments = $query->with(['order', 'invoice'])->get();
+        }
+
+        return response()->json($payments);
+    }
+
     public function processPayment(Request $request)
     {
         $validated = $request->validate([
             'order_id' => 'required|exists:orders,id',
             'amount' => 'required|numeric',
-            'payment_method' => 'required|string|in:cash,card,qr_code,bank_transfer',
+            'payment_method' => 'required|string|in:cash,card,qr_code,digital_wallet',
             'reference_code' => 'nullable|string',
         ]);
 
@@ -61,13 +77,48 @@ class PaymentController extends Controller
         return response()->json($invoice);
     }
 
+    public function getCurrentBills(Request $request)
+    {
+        $orders = Order::with(['table:id,table_number,section', 'items.food:id,name'])
+            ->whereNotIn('status', ['paid', 'cancelled'])
+            ->when($request->filled('table_id'), fn ($query) => $query->where('table_id', $request->query('table_id')))
+            ->latest()
+            ->get([
+                'id',
+                'order_number',
+                'table_id',
+                'status',
+                'subtotal',
+                'tax_amount',
+                'discount_amount',
+                'total_price',
+                'payment_requested_at',
+                'created_at',
+            ]);
+
+        return response()->json($orders);
+    }
+
+    public function getInvoices(Request $request)
+    {
+        $invoices = Invoice::with('payment.order')
+            ->when($request->filled('status'), fn ($query) => $query->where('status', $request->query('status')))
+            ->latest()
+            ->get();
+
+        return response()->json($invoices);
+    }
+
     public function applyCoupon(Request $request, $orderId)
     {
         $validated = $request->validate([
-            'coupon_code' => 'required|string',
+            'coupon_code' => 'nullable|string',
+            'code' => 'nullable|string',
         ]);
 
-        $coupon = Coupon::where('code', $validated['coupon_code'])
+        $couponCode = $validated['coupon_code'] ?? $validated['code'] ?? null;
+
+        $coupon = Coupon::where('code', $couponCode)
             ->where('is_active', true)
             ->first();
 

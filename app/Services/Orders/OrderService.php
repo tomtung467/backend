@@ -33,26 +33,37 @@ class OrderService
     public function createOrder(array $data)
     {
         return DB::transaction(function () use ($data) {
-            // Validate table exists and is available
             $table = Table::findOrFail($data['table_id']);
 
             if ($table->status !== 'empty' && $table->status !== 'occupied') {
                 throw new \Exception('Table is not available');
             }
 
-            // Create order
-            $order = new Order();
-            $order->table_id = $data['table_id'];
-            $order->order_number = $this->generateOrderNumber();
-            $order->status = 'pending';
-            $order->customer_notes = $data['customer_notes'] ?? null;
-            $order->special_requests = $data['special_requests'] ?? null;
-            $order->created_by_id = $data['created_by_id'];
-            $order->source = $data['source'] ?? 'table';
-            $order->save();
+            $order = Order::where('table_id', $data['table_id'])
+                ->whereNotIn('status', ['paid', 'cancelled'])
+                ->latest()
+                ->first();
 
-            // Add order items
-            $totalPrice = 0;
+            $isNewOrder = !$order;
+
+            if (!$order) {
+                $order = new Order();
+                $order->table_id = $data['table_id'];
+                $order->order_number = $this->generateOrderNumber();
+                $order->status = 'pending';
+                $order->customer_notes = $data['customer_notes'] ?? null;
+                $order->special_requests = $data['special_requests'] ?? null;
+                $order->created_by_id = $data['created_by_id'];
+                $order->source = $data['source'] ?? 'dine_in';
+                $order->save();
+            } else {
+                $order->status = 'pending';
+                $order->customer_notes = $data['customer_notes'] ?? $order->customer_notes;
+                $order->special_requests = $data['special_requests'] ?? $order->special_requests;
+                $order->save();
+            }
+
+            $addedPrice = 0;
             foreach ($data['items'] as $item) {
                 $food = Food::findOrFail($item['food_id']);
 
@@ -61,7 +72,7 @@ class OrderService
                 }
 
                 $itemPrice = $food->price * $item['quantity'];
-                $totalPrice += $itemPrice;
+                $addedPrice += $itemPrice;
 
                 OrderItem::create([
                     'order_id' => $order->id,
@@ -74,8 +85,7 @@ class OrderService
                 ]);
             }
 
-            // Calculate totals
-            $subtotal = $totalPrice;
+            $subtotal = $isNewOrder ? $addedPrice : $order->items()->sum('total_price');
             $tax = $subtotal * 0.1; // 10% VAT
             $total = $subtotal + $tax;
 
@@ -89,13 +99,11 @@ class OrderService
             $table->occupied_since = now();
             $table->save();
 
-            // Trigger events
             event(new OrderCreated($order));
 
-            // Log audit
-            $this->logAudit('create', 'Order', $order->id, null, $order->toArray());
+            $this->logAudit($isNewOrder ? 'create' : 'append_items', 'Order', $order->id, null, $order->toArray());
 
-            return $order->fresh()->load('items', 'table');
+            return $order->fresh()->load('items.food', 'table');
         });
     }
 
@@ -228,15 +236,19 @@ class OrderService
      */
     private function logAudit($action, $modelType, $modelId, $oldValues, $newValues)
     {
-        AuditLog::create([
-            'user_id' => Auth::id(),
-            'action' => $action,
-            'model_type' => $modelType,
-            'model_id' => $modelId,
-            'old_values' => $oldValues,
-            'new_values' => $newValues,
-            'ip_address' => request()->ip(),
-            'user_agent' => request()->header('User-Agent'),
-        ]);
+        try {
+            AuditLog::create([
+                'user_id' => Auth::id(),
+                'action' => $action,
+                'model_type' => $modelType,
+                'model_id' => $modelId,
+                'old_values' => $oldValues,
+                'new_values' => $newValues,
+                'ip_address' => request()->ip(),
+                'user_agent' => request()->header('User-Agent'),
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 }

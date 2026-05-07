@@ -10,15 +10,30 @@ class Order extends Model
     use SoftDeletes;
 
     protected $fillable = [
+        'order_number',
         'table_id',
-        'employee_id',
-        'total_price',
         'status',
-        'completed_at',
+        'total_price',
+        'subtotal',
+        'tax_amount',
+        'service_charge',
+        'discount_amount',
+        'coupon_id',
+        'customer_notes',
+        'special_requests',
+        'created_by_id',
+        'source',
+        'estimated_completion_time',
+        'actual_completion_time',
+        'paid_at',
+        'payment_requested_at',
     ];
 
     protected $dates = [
-        'completed_at',
+        'estimated_completion_time',
+        'actual_completion_time',
+        'paid_at',
+        'payment_requested_at',
         'deleted_at',
     ];
 
@@ -29,10 +44,15 @@ class Order extends Model
 
     public function employee()
     {
-        return $this->belongsTo(Employee::class);
+        return $this->belongsTo(Employee::class, 'created_by_id');
     }
 
     public function orderItems()
+    {
+        return $this->hasMany(OrderItem::class);
+    }
+
+    public function items()
     {
         return $this->hasMany(OrderItem::class);
     }
@@ -42,8 +62,18 @@ class Order extends Model
         return $this->hasMany(Payment::class);
     }
 
+    public function payment()
+    {
+        return $this->hasOne(Payment::class)->latestOfMany();
+    }
+
     public function coupons()
     {
         return $this->belongsToMany(Coupon::class, 'order_coupon');
+    }
+
+    public function coupon()
+    {
+        return $this->belongsTo(Coupon::class);
     }
 }

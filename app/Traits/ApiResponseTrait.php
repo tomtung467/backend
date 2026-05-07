@@ -123,5 +123,21 @@ trait ApiResponseTrait
             ],
         ], 200);
     }
+
+    /**
+     * Shortcut for success response
+     */
+    public function success($data = [], $message = 'Success', $code = 200): JsonResponse
+    {
+        return $this->successResponse($data, $message, $code);
+    }
+
+    /**
+     * Shortcut for error response
+     */
+    public function error($message = 'Error', $code = 400, $error = null): JsonResponse
+    {
+        return $this->errorResponse($message, $error, $code);
+    }
 }
 

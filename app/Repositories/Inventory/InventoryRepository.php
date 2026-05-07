@@ -17,13 +17,13 @@ class InventoryRepository extends BaseRepository implements IInventoryRepository
 
     public function getLowStockItems()
     {
-        return Ingredient::whereRaw('quantity <= min_stock_level')->get();
+        return Ingredient::whereRaw('current_quantity <= min_quantity')->get();
     }
 
     public function updateStock($id, $quantity)
     {
         $ingredient = $this->find($id);
-        $ingredient->update(['quantity' => $quantity]);
+        $ingredient->update(['current_quantity' => $quantity]);
         return $ingredient;
     }
 }

@@ -17,7 +17,8 @@ class KitchenController extends Controller
 
     public function getQueue()
     {
-        $queue = Order::where('status', '!=', 'completed')
+        $queue = Order::where('status', '!=', 'served')
+            ->where('status', '!=', 'paid')
             ->where('status', '!=', 'cancelled')
             ->with('orderItems.food')
             ->orderBy('created_at')
@@ -29,7 +30,7 @@ class KitchenController extends Controller
     public function updateOrderStatus(Request $request, $orderId)
     {
         $validated = $request->validate([
-            'status' => 'required|string|in:pending,cooking,ready,completed,cancelled',
+            'status' => 'required|string|in:pending,confirmed,in_progress,ready,served,paid,cancelled',
         ]);
 
         $order = Order::findOrFail($orderId);
@@ -60,7 +61,7 @@ class KitchenController extends Controller
     public function completeOrder($orderId)
     {
         $order = Order::findOrFail($orderId);
-        $order->update(['status' => 'completed', 'completed_at' => now()]);
+        $order->update(['status' => 'served', 'actual_completion_time' => now()]);
 
         return response()->json($order);
     }
