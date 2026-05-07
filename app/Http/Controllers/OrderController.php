@@ -33,7 +33,7 @@ class OrderController extends Controller
             $query = Order::query();
 
             if (!$request->boolean('summary')) {
-                $query->with('items', 'payment');
+                $query->with('items.food', 'payment');
             }
 
             // Filter by status if provided

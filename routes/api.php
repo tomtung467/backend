@@ -15,6 +15,8 @@ use App\Http\Controllers\OrderController;
 Route::post('/auth/login', [AuthController::class, 'login']);
 Route::post('/auth/register', [AuthController::class, 'register']);
 
+Route::get('/kitchen/queue-stream', [KitchenController::class, 'streamQueue']);
+
 // Menu routes (public)
 Route::get('/menu/categories', [MenuController::class, 'getCategories']);
 Route::get('/menu/categories/{id}/foods', [MenuController::class, 'getCategoryFoods']);

@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Order;
 use App\Services\Kitchen\KitchenQueueService;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+use Tymon\JWTAuth\Facades\JWTAuth;
 
 class KitchenController extends Controller
 {
@@ -17,14 +19,53 @@ class KitchenController extends Controller
 
     public function getQueue()
     {
-        $queue = Order::where('status', '!=', 'served')
-            ->where('status', '!=', 'paid')
-            ->where('status', '!=', 'cancelled')
-            ->with('orderItems.food')
-            ->orderBy('created_at')
-            ->get();
+        $queue = $this->kitchenQueue();
 
         return response()->json($queue);
+    }
+
+    public function streamQueue(Request $request): StreamedResponse
+    {
+        try {
+            JWTAuth::setToken($request->query('token'))->authenticate();
+        } catch (\Throwable $e) {
+            abort(401, 'Unauthorized');
+        }
+
+        return response()->stream(function () {
+            $lastSignature = null;
+            $startedAt = time();
+
+            while (time() - $startedAt < 55) {
+                if (connection_aborted()) {
+                    break;
+                }
+
+                $queue = $this->kitchenQueue();
+                $signature = $queue
+                    ->map(fn ($order) => "{$order->id}:{$order->status}:{$order->updated_at?->timestamp}:{$order->orderItems->count()}")
+                    ->implode('|');
+
+                if ($signature !== $lastSignature) {
+                    echo "event: queue\n";
+                    echo 'data: ' . $queue->toJson() . "\n\n";
+                    $lastSignature = $signature;
+                } else {
+                    echo ": keepalive\n\n";
+                }
+
+                if (ob_get_level() > 0) {
+                    ob_flush();
+                }
+                flush();
+                sleep(2);
+            }
+        }, 200, [
+            'Content-Type' => 'text/event-stream',
+            'Cache-Control' => 'no-cache, no-transform',
+            'Connection' => 'keep-alive',
+            'X-Accel-Buffering' => 'no',
+        ]);
     }
 
     public function updateOrderStatus(Request $request, $orderId)
@@ -77,5 +118,13 @@ class KitchenController extends Controller
             'order' => $order,
             'print_status' => 'sent_to_printer',
         ]);
+    }
+
+    private function kitchenQueue()
+    {
+        return Order::whereNotIn('status', ['served', 'paid', 'cancelled'])
+            ->with('orderItems.food')
+            ->orderBy('created_at')
+            ->get();
     }
 }

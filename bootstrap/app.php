@@ -23,7 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         // Throttle API requests
-        $middleware->throttleApi('60,1');
+        $middleware->throttleApi('300,1');
 
         // Trust proxies
         $middleware->trustProxies(at: ['*']);
