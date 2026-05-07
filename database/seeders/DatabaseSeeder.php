@@ -4,22 +4,13 @@ namespace Database\Seeders;
 
 use App\Models\User;
 use App\Models\Role;
-use App\Models\Permission;
 use App\Models\Department;
 use App\Models\Employee;
 use App\Models\Category;
 use App\Models\Food;
-use App\Models\Ingredient;
-use App\Models\Recipe;
-use App\Models\RecipeItem;
 use App\Models\Table;
-use App\Models\Order;
-use App\Models\OrderItem;
-use App\Models\Payment;
-use App\Models\Coupon;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\Hash;
 
 class DatabaseSeeder extends Seeder
 {
@@ -52,50 +43,11 @@ class DatabaseSeeder extends Seeder
             ['description' => 'Customer']
         );
 
-        // Create admin user
-        $adminUser = User::firstOrCreate([
-            'email' => 'admin@restaurant.com',
-        ], [
-            'name' => 'Admin User',
-            'password' => bcrypt('password'),
-        ]);
-        $adminUser->roles()->sync([$adminRole->id]);
+        // Create application users in the dedicated user seeder.
+        $this->call(UserSeeder::class);
 
-        // Create manager user
-        $managerUser = User::firstOrCreate([
-            'email' => 'manager@restaurant.com',
-        ], [
-            'name' => 'Manager User',
-            'password' => bcrypt('password'),
-        ]);
-        $managerUser->roles()->sync([$managerRole->id]);
-
-        // Create staff user
-        $staffUser = User::firstOrCreate([
-            'email' => 'staff@restaurant.com',
-        ], [
-            'name' => 'Staff User',
-            'password' => bcrypt('password'),
-        ]);
-        $staffUser->roles()->sync([$staffRole->id]);
-
-        // Create chef user
-        $chefUser = User::firstOrCreate([
-            'email' => 'chef@restaurant.com',
-        ], [
-            'name' => 'Chef User',
-            'password' => bcrypt('password'),
-        ]);
-        $chefUser->roles()->sync([$chefRole->id]);
-
-        // Create customer user
-        $customerUser = User::firstOrCreate([
-            'email' => 'customer@restaurant.com',
-        ], [
-            'name' => 'Customer User',
-            'password' => bcrypt('password'),
-        ]);
-        $customerUser->roles()->sync([$customerRole->id]);
+        $staffUser = User::where('email', 'staff@restaurant.com')->firstOrFail();
+        $chefUser = User::where('email', 'chef@restaurant.com')->firstOrFail();
 
         // Create departments
         $kitchenDept = Department::firstOrCreate([
@@ -193,4 +145,3 @@ class DatabaseSeeder extends Seeder
         }
     }
 }
-

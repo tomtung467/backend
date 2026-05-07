@@ -34,10 +34,11 @@ class KitchenController extends Controller
         ]);
 
         $order = Order::findOrFail($orderId);
+        $oldStatus = $order->status;
         $order->update(['status' => $validated['status']]);
 
         // Broadcast to kitchen display system
-        broadcast(new \App\Events\OrderStatusChanged($order));
+        broadcast(new \App\Events\OrderStatusChanged($order, $oldStatus));
 
         return response()->json($order);
     }
@@ -61,7 +62,9 @@ class KitchenController extends Controller
     public function completeOrder($orderId)
     {
         $order = Order::findOrFail($orderId);
+        $oldStatus = $order->status;
         $order->update(['status' => 'served', 'actual_completion_time' => now()]);
+        broadcast(new \App\Events\OrderStatusChanged($order, $oldStatus));
 
         return response()->json($order);
     }

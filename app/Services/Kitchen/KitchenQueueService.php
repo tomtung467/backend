@@ -26,10 +26,11 @@ class KitchenQueueService implements IKitchenQueueService
     public function updateOrderStatus($orderId, $status)
     {
         $order = Order::findOrFail($orderId);
+        $oldStatus = $order->status;
         $order->update(['status' => $status]);
 
         // Broadcast status change
-        broadcast(new \App\Events\OrderStatusChanged($order));
+        broadcast(new \App\Events\OrderStatusChanged($order, $oldStatus));
 
         return $order;
     }
@@ -45,7 +46,9 @@ class KitchenQueueService implements IKitchenQueueService
     public function completeOrder($orderId)
     {
         $order = Order::findOrFail($orderId);
+        $oldStatus = $order->status;
         $order->update(['status' => 'served', 'actual_completion_time' => now()]);
+        broadcast(new \App\Events\OrderStatusChanged($order, $oldStatus));
 
         return $order;
     }

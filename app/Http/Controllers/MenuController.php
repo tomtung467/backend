@@ -8,7 +8,6 @@ use App\Models\Recipe;
 use App\Services\Menu\MenuService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
-use Illuminate\Support\Str;
 
 class MenuController extends Controller
 {
@@ -182,8 +181,14 @@ class MenuController extends Controller
                 mkdir($directory, 0755, true);
             }
 
-            $filename = Str::uuid()->toString().'.'.$file->getClientOriginalExtension();
-            $file->move($directory, $filename);
+            $extension = strtolower($file->getClientOriginalExtension() ?: $file->guessExtension() ?: 'jpg');
+            $filename = hash_file('sha256', $file->getRealPath()).'.'.$extension;
+            $targetPath = $directory.DIRECTORY_SEPARATOR.$filename;
+
+            if (!file_exists($targetPath)) {
+                $file->move($directory, $filename);
+            }
+
             $validated['image_url'] = '/uploads/foods/'.$filename;
         }
 
