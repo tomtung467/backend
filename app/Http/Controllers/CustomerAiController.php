@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\CustomerAiInteraction;
 use App\Services\AI\MenuAiService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
@@ -22,23 +23,34 @@ class CustomerAiController extends Controller
             'session_id' => 'nullable|string|max:100',
         ]);
 
-        $apiKey = config('services.gemini.key');
-        if (!$apiKey) {
-            return response()->json([
-                'message' => 'Gemini API key is not configured.',
-            ], 503);
+        $relevantFoods = collect();
+        $statAnswer = $this->menuAi->answerFromStats($validated['message']);
+
+        if ($statAnswer) {
+            return $this->statResponse($request, $validated, $statAnswer);
         }
 
         $relevantFoods = $this->menuAi->findRelevantFoods($validated['message']);
+
+        $apiKey = config('services.gemini.key');
+        if (!$apiKey) {
+            return $this->statResponse(
+                $request,
+                $validated,
+                $this->menuAi->fallbackFromStats($relevantFoods),
+                ['reason' => 'missing_gemini_key']
+            );
+        }
+
         $foods = $this->menuAi->formatFoodContext($relevantFoods);
 
         $prompt = [
             'Bạn là trợ lý tư vấn món ăn cho khách của Nhà Hàng Phương Nam.',
             'Chỉ trả lời dựa trên dữ liệu món ăn JSON được cung cấp. Không bịa thông tin dinh dưỡng, đường, dị ứng hay thành phần nếu JSON không có.',
-            'Nếu dữ liệu không có thông tin như đường, dinh dưỡng hoặc dị ứng, hãy nói rõ là chưa có dữ liệu đầy đủ, sau đó gợi ý thận trọng dựa trên tên, mô tả, calories, độ cay và danh mục.',
+            'Nếu dữ liệu không có thông tin như đường, dinh dưỡng hoặc dị ứng, hãy nói rõ là đang dựa trên số liệu hiện có, sau đó gợi ý thận trọng theo tên, mô tả, calories, độ cay và danh mục.',
             'Trả lời bằng tiếng Việt có dấu, ngắn gọn, thân thiện, dễ hiểu. Ưu tiên 2-4 món phù hợp nhất.',
             'Khi hỏi món phổ biến nhất, dựa vào sold_quantity và is_popular.',
-            'Khi hỏi món ít đường, chỉ xác nhận ít đường nếu nutrition.sugar_g có dữ liệu. Nếu không có sugar_g, hãy nói chưa có dữ liệu đường.',
+            'Khi hỏi món ít đường, chỉ xác nhận ít đường nếu nutrition.sugar_g có dữ liệu. Nếu không có sugar_g, hãy nói đang lọc theo số liệu thay thế.',
             'Khi gợi ý món, nếu có thể hãy kèm giá và lý do ngắn.',
             'Dữ liệu món ăn JSON:',
             json_encode($foods, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
@@ -66,24 +78,27 @@ class CustomerAiController extends Controller
                 ]);
 
             if (!$response->successful()) {
-                $errorStatus = data_get($response->json(), 'error.status');
-                $errorMessage = data_get($response->json(), 'error.message');
-                $message = match ($errorStatus) {
-                    'INVALID_ARGUMENT' => 'Gemini API key không hợp lệ. Vui lòng kiểm tra lại key trong backend/.env.',
-                    'NOT_FOUND' => "Model Gemini '{$model}' không khả dụng. Hãy đổi GEMINI_MODEL sang gemini-2.5-pro hoặc gemini-2.5-flash.",
-                    'PERMISSION_DENIED' => 'Gemini API key chưa có quyền dùng Generative Language API.',
-                    'RESOURCE_EXHAUSTED' => 'Gemini đã vượt giới hạn quota hoặc rate limit.',
-                    default => 'Không thể kết nối trợ lý AI lúc này.',
-                };
-
-                return response()->json([
-                    'message' => $message,
-                    'detail' => config('app.debug') ? $errorMessage : null,
-                ], 502);
+                return $this->statResponse(
+                    $request,
+                    $validated,
+                    $this->menuAi->fallbackFromStats($relevantFoods),
+                    [
+                        'gemini_status' => data_get($response->json(), 'error.status'),
+                        'gemini_error' => config('app.debug') ? data_get($response->json(), 'error.message') : null,
+                    ]
+                );
             }
 
             $reply = data_get($response->json(), 'candidates.0.content.parts.0.text');
-            $reply = $reply ?: 'Mình chưa có đủ dữ liệu để trả lời câu này.';
+
+            if (!$reply) {
+                return $this->statResponse(
+                    $request,
+                    $validated,
+                    $this->menuAi->fallbackFromStats($relevantFoods),
+                    ['reason' => 'empty_gemini_reply']
+                );
+            }
 
             $this->logInteraction($request, $validated, $reply, $relevantFoods->pluck('id')->all(), [
                 'model' => $model,
@@ -92,26 +107,17 @@ class CustomerAiController extends Controller
 
             return response()->json([
                 'reply' => $reply,
-                'recommendations' => $relevantFoods->take(4)->map(fn ($food) => [
-                    'id' => $food->id,
-                    'name' => $food->name,
-                    'price' => (int) $food->price,
-                    'description' => $food->description,
-                    'image_url' => $food->image_url,
-                    'ai_score' => $food->ai_score ?? null,
-                ])->values(),
+                'recommendations' => $this->recommendationPayload($relevantFoods),
             ]);
         } catch (\Throwable $e) {
             report($e);
 
-            $reply = 'Trợ lý AI đang bận, vui lòng thử lại sau.';
-            $this->logInteraction($request, $validated, $reply, $relevantFoods->pluck('id')->all(), [
-                'error' => $e->getMessage(),
-            ]);
-
-            return response()->json([
-                'message' => $reply,
-            ], 502);
+            return $this->statResponse(
+                $request,
+                $validated,
+                $this->menuAi->fallbackFromStats($relevantFoods),
+                ['error' => $e->getMessage()]
+            );
         }
     }
 
@@ -145,6 +151,22 @@ class CustomerAiController extends Controller
         return response()->json(['message' => 'AI event tracked']);
     }
 
+    private function statResponse(Request $request, array $validated, array $answer, array $extraMetadata = [])
+    {
+        $foods = $answer['foods'] ?? collect();
+        $reply = $answer['reply'];
+
+        $this->logInteraction($request, $validated, $reply, $foods->pluck('id')->all(), array_merge([
+            'source' => 'menu_statistics',
+            'intent' => $answer['intent'] ?? null,
+        ], $extraMetadata));
+
+        return response()->json([
+            'reply' => $reply,
+            'recommendations' => $this->recommendationPayload($foods),
+        ]);
+    }
+
     private function logInteraction(Request $request, array $validated, string $reply, array $candidateFoodIds, array $metadata): void
     {
         CustomerAiInteraction::create([
@@ -157,5 +179,17 @@ class CustomerAiController extends Controller
             'candidate_food_ids' => $candidateFoodIds,
             'metadata' => $metadata,
         ]);
+    }
+
+    private function recommendationPayload(Collection $foods): Collection
+    {
+        return $foods->take(4)->map(fn ($food) => [
+            'id' => $food->id,
+            'name' => $food->name,
+            'price' => (int) $food->price,
+            'description' => $food->description,
+            'image_url' => $food->image_url,
+            'ai_score' => $food->ai_score ?? null,
+        ])->values();
     }
 }

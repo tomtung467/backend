@@ -75,6 +75,53 @@ class MenuAiService
         ])->values()->all();
     }
 
+    public function answerFromStats(string $message): ?array
+    {
+        $intent = $this->detectStatIntent($message);
+
+        if (!$intent) {
+            return null;
+        }
+
+        $foods = $this->availableFoodsWithStats();
+
+        if ($foods->isEmpty()) {
+            return null;
+        }
+
+        return match ($intent) {
+            'popular' => $this->popularAnswer($foods),
+            'low_sugar' => $this->lowSugarAnswer($foods),
+            'light' => $this->lightMealAnswer($foods),
+            'analysis' => $this->menuAnalysisAnswer($foods),
+            default => null,
+        };
+    }
+
+    public function fallbackFromStats(Collection $foods): array
+    {
+        $items = $foods->isNotEmpty()
+            ? $foods->take(4)->values()
+            : $this->availableFoodsWithStats()
+                ->sortByDesc(fn (Food $food) => ((int) ($food->sold_quantity ?? 0)) + ($food->is_popular ? 10 : 0))
+                ->take(4)
+                ->values();
+
+        if ($items->isEmpty()) {
+            return [
+                'reply' => 'Hiện menu chưa có món khả dụng để thống kê.',
+                'foods' => collect(),
+                'intent' => 'fallback_empty',
+            ];
+        }
+
+        return [
+            'reply' => 'Mình chưa có dữ liệu chuyên sâu cho câu này, nên gợi ý dựa trên số liệu menu hiện có: ' . $this->foodListSentence($items) . '.',
+            'foods' => $items,
+            'intent' => 'fallback_stats',
+        ];
+    }
+
     public function ensureProfile(Food $food, bool $withEmbedding = true): FoodAiProfile
     {
         $food->loadMissing('category');
@@ -235,6 +282,195 @@ class MenuAiService
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    private function detectStatIntent(string $message): ?string
+    {
+        $text = Str::lower($this->normalize($message));
+
+        return match (true) {
+            Str::contains($text, ['pho bien', 'ban chay', 'duoc goi nhieu', 'yeu thich']) => 'popular',
+            Str::contains($text, ['it duong', 'duong thap', 'low sugar', 'khong ngot']) => 'low_sugar',
+            Str::contains($text, ['mon nhe', 'nhe de an', 'de an', 'healthy', 'thanh dam']) => 'light',
+            Str::contains($text, ['phan tich', 'menu hom nay', 'tong quan', 'hom nay']) => 'analysis',
+            default => null,
+        };
+    }
+
+    private function availableFoodsWithStats(): Collection
+    {
+        return Food::query()
+            ->with('category')
+            ->withSum([
+                'orderItems as sold_quantity' => fn ($items) => $items->where('status', '!=', 'cancelled'),
+            ], 'quantity')
+            ->where('is_available', true)
+            ->get();
+    }
+
+    private function popularAnswer(Collection $foods): array
+    {
+        $items = $foods
+            ->sortByDesc(fn (Food $food) => ((int) ($food->sold_quantity ?? 0)) + ($food->is_popular ? 10 : 0))
+            ->take(4)
+            ->values();
+
+        $lines = $items->map(fn (Food $food, int $index) => sprintf(
+            '%d. %s - %s%s',
+            $index + 1,
+            $food->name,
+            $this->vnd($food->price),
+            ((int) ($food->sold_quantity ?? 0)) > 0 ? ' (' . (int) $food->sold_quantity . ' phần đã bán)' : ($food->is_popular ? ' (được đánh dấu phổ biến)' : '')
+        ))->implode("\n");
+
+        return [
+            'reply' => "Dựa trên số liệu bán hàng và đánh dấu phổ biến, các món nổi bật nhất là:\n{$lines}",
+            'foods' => $items,
+            'intent' => 'popular',
+        ];
+    }
+
+    private function lowSugarAnswer(Collection $foods): array
+    {
+        $withSugar = $foods
+            ->filter(fn (Food $food) => $this->sugarValue($food) !== null)
+            ->sortBy(fn (Food $food) => $this->sugarValue($food))
+            ->take(4)
+            ->values();
+
+        if ($withSugar->isNotEmpty()) {
+            $lines = $withSugar->map(fn (Food $food, int $index) => sprintf(
+                '%d. %s - %s, khoảng %sg đường',
+                $index + 1,
+                $food->name,
+                $this->vnd($food->price),
+                $this->trimNumber($this->sugarValue($food))
+            ))->implode("\n");
+
+            return [
+                'reply' => "Dựa trên chỉ số sugar_g hiện có, các món ít đường hơn là:\n{$lines}",
+                'foods' => $withSugar,
+                'intent' => 'low_sugar',
+            ];
+        }
+
+        $items = $foods
+            ->filter(fn (Food $food) => $this->hasTag($food, 'diet_tags', 'low_sugar') || Str::contains(Str::lower((string) $food->category?->name), ['salad', 'soup', 'vegetarian']))
+            ->sortBy(fn (Food $food) => (int) ($food->calories ?? 9999))
+            ->take(4)
+            ->values();
+
+        return [
+            'reply' => 'Menu chưa có chỉ số sugar_g, nên mình chỉ lọc theo tag/danh mục nhẹ và calories hiện có: ' . $this->foodListSentence($items) . '.',
+            'foods' => $items,
+            'intent' => 'low_sugar_fallback',
+        ];
+    }
+
+    private function lightMealAnswer(Collection $foods): array
+    {
+        $items = $foods
+            ->sortByDesc(fn (Food $food) => $this->lightScore($food))
+            ->take(4)
+            ->values();
+
+        $lines = $items->map(fn (Food $food, int $index) => sprintf(
+            '%d. %s - %s%s',
+            $index + 1,
+            $food->name,
+            $this->vnd($food->price),
+            $food->calories ? ', khoảng ' . (int) $food->calories . ' kcal' : ''
+        ))->implode("\n");
+
+        return [
+            'reply' => "Dựa trên calories, độ cay, danh mục và tag món nhẹ, mình gợi ý:\n{$lines}",
+            'foods' => $items,
+            'intent' => 'light',
+        ];
+    }
+
+    private function menuAnalysisAnswer(Collection $foods): array
+    {
+        $top = $foods
+            ->sortByDesc(fn (Food $food) => ((int) ($food->sold_quantity ?? 0)) + ($food->is_popular ? 10 : 0))
+            ->take(4)
+            ->values();
+
+        $categoryCount = $foods->groupBy(fn (Food $food) => $food->category?->name ?: 'Khác')
+            ->map->count()
+            ->sortDesc()
+            ->take(3)
+            ->map(fn (int $count, string $category) => "{$category}: {$count} món")
+            ->implode(', ');
+
+        $avgPrice = (int) round($foods->avg(fn (Food $food) => (int) $food->price));
+        $popularCount = $foods->filter(fn (Food $food) => $food->is_popular)->count();
+        $lowSugarCount = $foods->filter(fn (Food $food) => $this->sugarValue($food) !== null && $this->sugarValue($food) <= 5)->count();
+
+        $reply = "Phân tích nhanh theo số liệu menu hiện có:\n"
+            . "- Tổng món đang bán: {$foods->count()} món.\n"
+            . "- Giá trung bình: {$this->vnd($avgPrice)}.\n"
+            . "- Nhóm nhiều món nhất: {$categoryCount}.\n"
+            . "- Món được đánh dấu phổ biến: {$popularCount} món.\n"
+            . "- Món có sugar_g <= 5g: {$lowSugarCount} món.\n"
+            . "- Gợi ý nổi bật: {$this->foodListSentence($top)}.";
+
+        return [
+            'reply' => $reply,
+            'foods' => $top,
+            'intent' => 'analysis',
+        ];
+    }
+
+    private function lightScore(Food $food): int
+    {
+        $category = Str::lower((string) $food->category?->name);
+        $score = 0;
+        $score += $this->hasTag($food, 'diet_tags', 'light') ? 5 : 0;
+        $score += $this->hasTag($food, 'best_for', 'light_meal') ? 4 : 0;
+        $score += Str::contains($category, ['salad', 'soup', 'vegetarian']) ? 3 : 0;
+        $score += (int) $food->spicy_level <= 1 ? 2 : 0;
+        $score += $food->calories && (int) $food->calories <= 450 ? 2 : 0;
+
+        return $score;
+    }
+
+    private function sugarValue(Food $food): ?float
+    {
+        $nutrition = $food->nutrition;
+
+        return is_array($nutrition) && isset($nutrition['sugar_g']) && is_numeric($nutrition['sugar_g'])
+            ? (float) $nutrition['sugar_g']
+            : null;
+    }
+
+    private function hasTag(Food $food, string $field, string $tag): bool
+    {
+        $value = $food->{$field};
+
+        return is_array($value) && in_array($tag, $value, true);
+    }
+
+    private function foodListSentence(Collection $foods): string
+    {
+        return $foods
+            ->take(4)
+            ->map(fn (Food $food) => "{$food->name} ({$this->vnd($food->price)})")
+            ->implode(', ');
+    }
+
+    private function vnd(int|float|string|null $price): string
+    {
+        return number_format((int) $price, 0, ',', '.') . ' đ';
+    }
+
+    private function trimNumber(?float $value): string
+    {
+        if ($value === null) {
+            return '0';
+        }
+
+        return rtrim(rtrim(number_format($value, 1, '.', ''), '0'), '.');
     }
 
     private function keywordScore(string $message, string $searchText): float
