@@ -74,6 +74,7 @@ Route::middleware(['auth:api'])->group(function () {
     Route::post('/orders/{id}/request-payment', [OrderController::class, 'requestPayment']);
     Route::delete('/orders/{id}', [OrderController::class, 'cancel']);
     Route::post('/customer/ai-chat', [CustomerAiController::class, 'chat']);
+    Route::post('/customer/ai-events', [CustomerAiController::class, 'trackEvent']);
 
     // Employee routes
     Route::get('/employees', [EmployeeController::class, 'getEmployees']);

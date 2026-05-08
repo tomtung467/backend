@@ -106,9 +106,15 @@ class MenuController extends Controller
         $fields = $request->filled('fields')
             ? array_values(array_intersect(explode(',', $request->query('fields')), [
                 'id', 'name', 'price', 'category_id', 'description', 'is_available',
-                'is_popular', 'image_url', 'preparation_time', 'created_at', 'updated_at',
+                'is_popular', 'image_url', 'preparation_time', 'spicy_level', 'calories',
+                'allergens', 'ingredients', 'nutrition', 'diet_tags', 'taste_profile',
+                'best_for', 'created_at', 'updated_at',
             ]))
-            : ['id', 'name', 'price', 'category_id', 'description', 'is_available', 'is_popular', 'image_url', 'preparation_time'];
+            : [
+                'id', 'name', 'price', 'category_id', 'description', 'is_available',
+                'is_popular', 'image_url', 'preparation_time', 'spicy_level', 'calories',
+                'allergens', 'ingredients', 'nutrition', 'diet_tags', 'taste_profile', 'best_for',
+            ];
 
         if (!in_array('id', $fields, true)) {
             $fields[] = 'id';
@@ -147,6 +153,12 @@ class MenuController extends Controller
             'preparation_time' => 'nullable|integer',
             'spicy_level' => 'nullable|integer',
             'calories' => 'nullable|integer',
+            'allergens' => 'nullable|array',
+            'ingredients' => 'nullable|array',
+            'nutrition' => 'nullable|array',
+            'diet_tags' => 'nullable|array',
+            'taste_profile' => 'nullable|array',
+            'best_for' => 'nullable|array',
             'is_popular' => 'nullable|boolean',
         ]);
 
@@ -174,6 +186,12 @@ class MenuController extends Controller
             'preparation_time' => 'nullable|integer',
             'spicy_level' => 'nullable|integer',
             'calories' => 'nullable|integer',
+            'allergens' => 'nullable|array',
+            'ingredients' => 'nullable|array',
+            'nutrition' => 'nullable|array',
+            'diet_tags' => 'nullable|array',
+            'taste_profile' => 'nullable|array',
+            'best_for' => 'nullable|array',
             'is_popular' => 'sometimes|boolean',
         ]);
 

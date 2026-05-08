@@ -229,6 +229,8 @@ class DatabaseSeeder extends Seeder
         ];
 
         return collect($foods)->map(function ($food) use ($categories) {
+            $aiProfile = $this->foodAiSeedProfile($food);
+
             return Food::updateOrCreate(
                 ['name' => $food['name'], 'category_id' => $categories[$food['category']]->id],
                 [
@@ -237,12 +239,93 @@ class DatabaseSeeder extends Seeder
                     'preparation_time' => $food['preparation_time'],
                     'spicy_level' => $food['spicy_level'],
                     'calories' => $food['calories'],
-                    'allergens' => json_encode(['gluten']),
+                    'allergens' => $aiProfile['allergens'],
+                    'ingredients' => $aiProfile['ingredients'],
+                    'nutrition' => $aiProfile['nutrition'],
+                    'diet_tags' => $aiProfile['diet_tags'],
+                    'taste_profile' => $aiProfile['taste_profile'],
+                    'best_for' => $aiProfile['best_for'],
                     'is_available' => true,
                     'is_popular' => $food['is_popular'],
                 ]
             );
         });
+    }
+
+    private function foodAiSeedProfile(array $food): array
+    {
+        $name = $food['name'];
+        $category = $food['category'];
+        $description = strtolower($food['description']);
+        $isDessert = $category === 'Desserts';
+        $isDrink = $category === 'Beverages';
+        $isSeafood = $category === 'Seafood' || str_contains($description, 'seafood') || str_contains($description, 'shrimp') || str_contains($description, 'squid') || str_contains($description, 'bass');
+        $isVegetarian = $category === 'Vegetarian' || str_contains($description, 'tofu') || str_contains($description, 'vegetable');
+        $isLight = in_array($category, ['Salads', 'Soups', 'Vegetarian', 'Beverages'], true) && !$isDessert;
+        $isSpicy = $food['spicy_level'] >= 2;
+
+        $ingredients = match (true) {
+            str_contains($name, 'Chicken') => ['chicken', 'vegetables', 'herbs'],
+            str_contains($name, 'Beef') || str_contains($name, 'Steak') || str_contains($name, 'Pho') => ['beef', 'herbs', 'spices'],
+            $isSeafood => ['seafood', 'garlic', 'herbs'],
+            str_contains($name, 'Cake') => ['chocolate', 'flour', 'cream', 'sugar'],
+            str_contains($name, 'Panna') => ['cream', 'mango', 'sugar'],
+            str_contains($name, 'Coffee') => ['coffee', 'condensed milk', 'sugar'],
+            str_contains($name, 'Soda') => ['passion fruit', 'soda', 'sugar'],
+            $isVegetarian => ['vegetables', 'tofu', 'mushrooms'],
+            default => ['herbs', 'vegetables', 'house seasoning'],
+        };
+
+        $sugar = match (true) {
+            $isDessert => str_contains($name, 'Cake') ? 34 : 24,
+            $isDrink => str_contains($name, 'Coffee') ? 18 : 22,
+            str_contains($name, 'Pumpkin') => 7,
+            in_array($category, ['Salads', 'Soups', 'Seafood', 'Vegetarian'], true) => 3,
+            default => 5,
+        };
+
+        $allergens = array_values(array_filter([
+            in_array($category, ['Noodles', 'Appetizers', 'Desserts'], true) ? 'gluten' : null,
+            $isSeafood ? 'seafood' : null,
+            ($isDessert || str_contains($name, 'Coffee') || str_contains($name, 'Caesar')) ? 'dairy' : null,
+            str_contains($name, 'Fried Rice') ? 'egg' : null,
+        ]));
+
+        return [
+            'ingredients' => $ingredients,
+            'nutrition' => [
+                'calories' => $food['calories'],
+                'sugar_g' => $sugar,
+                'protein_level' => $isVegetarian || $isDessert || $isDrink ? 'medium' : 'high',
+                'carb_level' => in_array($category, ['Noodles', 'Rice Dishes', 'Desserts'], true) ? 'high' : 'medium',
+            ],
+            'allergens' => $allergens,
+            'diet_tags' => array_values(array_filter([
+                $isVegetarian ? 'vegetarian' : null,
+                $isLight ? 'light' : null,
+                $sugar <= 5 ? 'low_sugar' : null,
+                $food['spicy_level'] === 0 ? 'not_spicy' : null,
+                !$isSpicy && !$isDrink ? 'kid_friendly' : null,
+                $isSeafood ? 'seafood' : null,
+            ])),
+            'taste_profile' => array_values(array_filter([
+                $isSpicy ? 'spicy' : null,
+                $isDessert || $isDrink ? 'sweet' : null,
+                str_contains($description, 'sour') ? 'sour' : null,
+                str_contains($description, 'grilled') ? 'smoky' : null,
+                $isLight ? 'fresh' : null,
+                str_contains($description, 'creamy') || str_contains($description, 'butter') ? 'creamy' : null,
+            ])),
+            'best_for' => array_values(array_filter([
+                $food['preparation_time'] <= 10 ? 'quick_order' : null,
+                $isLight ? 'light_meal' : null,
+                $food['price'] <= 80000 ? 'budget' : null,
+                $food['is_popular'] ? 'popular_choice' : null,
+                in_array($category, ['Main Courses', 'Seafood', 'Rice Dishes'], true) ? 'main_meal' : null,
+                $isDessert ? 'dessert' : null,
+                $isDrink ? 'drink' : null,
+            ])),
+        ];
     }
 
     private function seedIngredients()

@@ -38,6 +38,7 @@ return [
     'gemini' => [
         'key' => env('GEMINI_API_KEY'),
         'model' => env('GEMINI_MODEL', 'gemini-2.5-pro'),
+        'embedding_model' => env('GEMINI_EMBEDDING_MODEL', 'gemini-embedding-001'),
     ],
 
 ];
