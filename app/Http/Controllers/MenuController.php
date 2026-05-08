@@ -40,6 +40,55 @@ class MenuController extends Controller
         ]);
     }
 
+    public function createCategory(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255|unique:categories,name',
+            'description' => 'nullable|string',
+            'image_url' => 'nullable|string|max:2048',
+            'display_order' => 'nullable|integer',
+            'is_active' => 'nullable|boolean',
+        ]);
+
+        $category = Category::create($validated + [
+            'display_order' => 0,
+            'is_active' => true,
+        ]);
+
+        return response()->json($category, 201);
+    }
+
+    public function updateCategory($id, Request $request)
+    {
+        $category = Category::findOrFail($id);
+        $validated = $request->validate([
+            'name' => 'sometimes|required|string|max:255|unique:categories,name,' . $id,
+            'description' => 'nullable|string',
+            'image_url' => 'nullable|string|max:2048',
+            'display_order' => 'nullable|integer',
+            'is_active' => 'nullable|boolean',
+        ]);
+
+        $category->update($validated);
+
+        return response()->json($category);
+    }
+
+    public function deleteCategory($id)
+    {
+        $category = Category::withCount('foods')->findOrFail($id);
+
+        if ($category->foods_count > 0) {
+            return response()->json([
+                'message' => 'Cannot delete a category that still has foods',
+            ], 422);
+        }
+
+        $category->delete();
+
+        return response()->json(['message' => 'Category deleted']);
+    }
+
     public function getFoodDetails($foodId)
     {
         $food = Food::with('recipes')->findOrFail($foodId);

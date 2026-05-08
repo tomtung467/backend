@@ -37,17 +37,30 @@ class AnalyticsController extends Controller
     {
         $limit = $request->query('limit', 10);
         $period = $request->query('period', 'month');
+        $startDate = $request->query('start_date');
+        $endDate = $request->query('end_date');
 
-        $topDishes = $this->analyticsService->getTopDishes($limit, $period);
+        $topDishes = $this->analyticsService->getTopDishes($limit, $period, $startDate, $endDate);
         return response()->json($topDishes);
     }
 
     public function getOrderAnalytics(Request $request)
     {
-        $period = $request->query('period', 'month');
-        $analytics = Order::selectRaw('DATE(created_at) as date, COUNT(*) as total_orders, SUM(total_price) as total_revenue')
-            ->groupBy('date')
-            ->get();
+        $analytics = $this->analyticsService->getOrderAnalytics(
+            $request->query('start_date'),
+            $request->query('end_date'),
+            $request->query('status')
+        );
+
+        return response()->json($analytics);
+    }
+
+    public function getInventoryAnalytics(Request $request)
+    {
+        $analytics = $this->analyticsService->getInventoryAnalytics(
+            $request->query('start_date'),
+            $request->query('end_date')
+        );
 
         return response()->json($analytics);
     }

@@ -11,6 +11,10 @@ class Table extends Model
         'capacity',
         'status',
         'section',
+        'layout_x',
+        'layout_y',
+        'shape',
+        'merged_into_table_id',
         'notes',
         'current_customer_count',
         'occupied_since',
@@ -22,6 +26,8 @@ class Table extends Model
         'occupied_since' => 'datetime',
         'reserved_until' => 'datetime',
         'is_active' => 'boolean',
+        'layout_x' => 'integer',
+        'layout_y' => 'integer',
     ];
 
     public function orders()

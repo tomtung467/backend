@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
 class AuthController extends Controller
@@ -69,6 +71,69 @@ class AuthController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    public function forgotPassword(Request $request)
+    {
+        $validated = $request->validate([
+            'email' => 'required|email|exists:users,email',
+        ]);
+
+        $token = Str::random(64);
+
+        DB::table('password_reset_tokens')->updateOrInsert(
+            ['email' => $validated['email']],
+            [
+                'token' => Hash::make($token),
+                'created_at' => now(),
+            ]
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Password reset token has been generated',
+            'reset_token' => $token,
+        ]);
+    }
+
+    public function resetPassword(Request $request)
+    {
+        $validated = $request->validate([
+            'email' => 'required|email|exists:users,email',
+            'token' => 'required|string',
+            'password' => 'required|string|min:6|confirmed',
+        ]);
+
+        $reset = DB::table('password_reset_tokens')
+            ->where('email', $validated['email'])
+            ->first();
+
+        if (!$reset || !Hash::check($validated['token'], $reset->token)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid password reset token',
+            ], 422);
+        }
+
+        if (now()->diffInMinutes($reset->created_at) > 60) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Password reset token has expired',
+            ], 422);
+        }
+
+        User::where('email', $validated['email'])->update([
+            'password' => Hash::make($validated['password']),
+        ]);
+
+        DB::table('password_reset_tokens')
+            ->where('email', $validated['email'])
+            ->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Password has been reset successfully',
+        ]);
     }
 
     public function logout()

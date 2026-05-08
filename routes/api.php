@@ -14,6 +14,8 @@ use App\Http\Controllers\OrderController;
 // Public routes
 Route::post('/auth/login', [AuthController::class, 'login']);
 Route::post('/auth/register', [AuthController::class, 'register']);
+Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
+Route::post('/auth/reset-password', [AuthController::class, 'resetPassword']);
 
 Route::get('/kitchen/queue-stream', [KitchenController::class, 'streamQueue']);
 
@@ -36,6 +38,9 @@ Route::middleware(['auth:api'])->group(function () {
     Route::post('/menu/foods/{id}', [MenuController::class, 'updateFood']);
     Route::put('/menu/foods/{id}', [MenuController::class, 'updateFood']);
     Route::delete('/menu/foods/{id}', [MenuController::class, 'deleteFood']);
+    Route::post('/menu/categories', [MenuController::class, 'createCategory']);
+    Route::put('/menu/categories/{id}', [MenuController::class, 'updateCategory']);
+    Route::delete('/menu/categories/{id}', [MenuController::class, 'deleteCategory']);
     Route::get('/menu/recipes', [MenuController::class, 'getRecipes']);
     Route::post('/menu/recipes', [MenuController::class, 'createRecipe']);
 
@@ -94,6 +99,7 @@ Route::middleware(['auth:api'])->group(function () {
     Route::get('/analytics/revenue', [AnalyticsController::class, 'getRevenueData']);
     Route::get('/analytics/top-dishes', [AnalyticsController::class, 'getTopDishes']);
     Route::get('/analytics/orders', [AnalyticsController::class, 'getOrderAnalytics']);
+    Route::get('/analytics/inventory', [AnalyticsController::class, 'getInventoryAnalytics']);
     Route::get('/analytics/employees', [AnalyticsController::class, 'getEmployeePerformance']);
     Route::post('/analytics/reports', [AnalyticsController::class, 'getSalesReport']);
     Route::get('/analytics/payment-breakdown', [AnalyticsController::class, 'getPaymentMethodBreakdown']);
@@ -101,7 +107,10 @@ Route::middleware(['auth:api'])->group(function () {
 
     // Table routes
     Route::get('/tables', [TableController::class, 'getAllTables']);
+    Route::post('/tables', [TableController::class, 'createTable']);
     Route::get('/tables/{id}', [TableController::class, 'getTableDetails']);
+    Route::put('/tables/{id}', [TableController::class, 'updateTable']);
+    Route::delete('/tables/{id}', [TableController::class, 'deleteTable']);
     Route::put('/tables/{id}/status', [TableController::class, 'updateTableStatus']);
     Route::post('/tables/{id}/assign', [TableController::class, 'assignTable']);
     Route::post('/tables/{id}/release', [TableController::class, 'releaseTable']);

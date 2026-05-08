@@ -21,7 +21,7 @@ class TableController extends Controller
     {
         if ($request->boolean('summary')) {
             $tables = Table::query()
-                ->select('id', 'table_number', 'capacity', 'section', 'status', 'current_customer_count', 'occupied_since')
+                ->select('id', 'table_number', 'capacity', 'section', 'layout_x', 'layout_y', 'shape', 'merged_into_table_id', 'status', 'current_customer_count', 'occupied_since')
                 ->with(['orders' => function ($query) {
                     $query->select('id', 'table_id', 'status', 'payment_requested_at')
                         ->whereNotIn('status', ['paid', 'cancelled'])
@@ -64,6 +64,63 @@ class TableController extends Controller
         });
 
         return response()->json($tables);
+    }
+
+    public function createTable(Request $request)
+    {
+        $validated = $request->validate([
+            'table_number' => 'required|integer|unique:tables,table_number',
+            'capacity' => 'required|integer|min:1',
+            'section' => 'nullable|string|max:100',
+            'layout_x' => 'nullable|integer|min:0',
+            'layout_y' => 'nullable|integer|min:0',
+            'shape' => 'nullable|string|in:circle,square,rectangle',
+            'status' => 'nullable|string|in:empty,available,occupied,reserved',
+        ]);
+
+        if (($validated['status'] ?? null) === 'available') {
+            $validated['status'] = 'empty';
+        }
+        $validated['status'] = $validated['status'] ?? 'empty';
+        $validated['shape'] = $validated['shape'] ?? 'rectangle';
+
+        $table = Table::create($validated);
+        return response()->json($table, 201);
+    }
+
+    public function updateTable(Request $request, $id)
+    {
+        $table = Table::findOrFail($id);
+        $validated = $request->validate([
+            'table_number' => 'sometimes|integer|unique:tables,table_number,' . $id,
+            'capacity' => 'sometimes|integer|min:1',
+            'section' => 'nullable|string|max:100',
+            'layout_x' => 'nullable|integer|min:0',
+            'layout_y' => 'nullable|integer|min:0',
+            'shape' => 'nullable|string|in:circle,square,rectangle',
+            'status' => 'nullable|string|in:empty,available,occupied,reserved',
+            'merged_into_table_id' => 'nullable|exists:tables,id',
+        ]);
+
+        if (($validated['status'] ?? null) === 'available') {
+            $validated['status'] = 'empty';
+        }
+
+        $table->update($validated);
+        return response()->json($table);
+    }
+
+    public function deleteTable($id)
+    {
+        $table = Table::findOrFail($id);
+        if ($table->orders()->whereNotIn('status', ['paid', 'cancelled'])->exists()) {
+            return response()->json(['message' => 'Cannot delete a table with active orders'], 422);
+        }
+
+        Table::where('merged_into_table_id', $table->id)->update(['merged_into_table_id' => null]);
+        $table->delete();
+
+        return response()->json(['message' => 'Table deleted']);
     }
 
     public function getTableDetails($id)
@@ -171,17 +228,20 @@ class TableController extends Controller
         $validated = $request->validate([
             'primary_table_id' => 'required|exists:tables,id',
             'merged_table_ids' => 'required|array',
+            'merged_table_ids.*' => 'exists:tables,id',
         ]);
 
-        $merge = $this->tableService->mergeTables($validated);
-        return response()->json($merge, 201);
+        Table::whereIn('id', $validated['merged_table_ids'])
+            ->where('id', '!=', $validated['primary_table_id'])
+            ->update(['merged_into_table_id' => $validated['primary_table_id']]);
+
+        $primary = Table::findOrFail($validated['primary_table_id']);
+        return response()->json($primary->fresh(), 201);
     }
 
     public function unmergeTables($mergeId)
     {
-        $merge = TableMerge::findOrFail($mergeId);
-        $this->tableService->unmergeTables($merge);
-
+        Table::where('merged_into_table_id', $mergeId)->update(['merged_into_table_id' => null]);
         return response()->json(['message' => 'Tables unmerged successfully']);
     }
 }

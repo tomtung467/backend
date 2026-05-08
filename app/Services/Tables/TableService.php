@@ -17,12 +17,12 @@ class TableService implements ITableService
 {
     public function canAssignTable($table, $numberOfGuests)
     {
-        return $table->capacity >= $numberOfGuests && $table->status === 'available';
+        return $table->capacity >= $numberOfGuests && in_array($table->status, ['empty', 'available'], true);
     }
 
     public function releaseTable($table)
     {
-        return $table->update(['status' => 'available']);
+        return $table->update(['status' => 'empty']);
     }
 
     public function mergeTables($data)
@@ -34,8 +34,8 @@ class TableService implements ITableService
             'merged_by' => auth()->id(),
         ]);
 
-        // Update table statuses
-        Table::whereIn('id', $data['merged_table_ids'])->update(['status' => 'merged']);
+        Table::whereIn('id', $data['merged_table_ids'])
+            ->update(['merged_into_table_id' => $data['primary_table_id']]);
 
         return $merge;
     }
@@ -44,7 +44,7 @@ class TableService implements ITableService
     {
         $mergedTableIds = json_decode($merge->merged_table_ids);
         
-        Table::whereIn('id', $mergedTableIds)->update(['status' => 'available']);
+        Table::whereIn('id', $mergedTableIds)->update(['merged_into_table_id' => null]);
         
         $merge->update(['unmerged_at' => now()]);
 
