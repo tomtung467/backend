@@ -10,6 +10,7 @@ use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\TableController;
 use App\Http\Controllers\OrderController;
+use App\Http\Controllers\CustomerAiController;
 
 // Public routes
 Route::post('/auth/login', [AuthController::class, 'login']);
@@ -72,6 +73,7 @@ Route::middleware(['auth:api'])->group(function () {
     Route::put('/orders/{id}/items/{itemId}/status', [OrderController::class, 'updateItemStatus']);
     Route::post('/orders/{id}/request-payment', [OrderController::class, 'requestPayment']);
     Route::delete('/orders/{id}', [OrderController::class, 'cancel']);
+    Route::post('/customer/ai-chat', [CustomerAiController::class, 'chat']);
 
     // Employee routes
     Route::get('/employees', [EmployeeController::class, 'getEmployees']);
