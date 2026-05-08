@@ -19,7 +19,11 @@ class OrderItemResource extends JsonResource
             'order_id' => $this->order_id,
             'food_id' => $this->food_id,
             'quantity' => $this->quantity,
-            'price' => $this->price,
+            'price' => $this->unit_price,
+            'unit_price' => $this->unit_price,
+            'total_price' => $this->total_price,
+            'status' => $this->status,
+            'special_notes' => $this->special_notes,
             'food' => new FoodResource($this->whenLoaded('food')),
         ];
     }

@@ -69,6 +69,7 @@ Route::middleware(['auth:api'])->group(function () {
     Route::get('/orders/table/{tableId}', [OrderController::class, 'getByTable']);
     Route::get('/orders/{id}', [OrderController::class, 'show']);
     Route::put('/orders/{id}/status', [OrderController::class, 'updateStatus']);
+    Route::put('/orders/{id}/items/{itemId}/status', [OrderController::class, 'updateItemStatus']);
     Route::post('/orders/{id}/request-payment', [OrderController::class, 'requestPayment']);
     Route::delete('/orders/{id}', [OrderController::class, 'cancel']);
 

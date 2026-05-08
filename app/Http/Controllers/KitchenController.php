@@ -43,7 +43,13 @@ class KitchenController extends Controller
 
                 $queue = $this->kitchenQueue();
                 $signature = $queue
-                    ->map(fn ($order) => "{$order->id}:{$order->status}:{$order->updated_at?->timestamp}:{$order->orderItems->count()}")
+                    ->map(function ($order) {
+                        $itemsSignature = $order->orderItems
+                            ->map(fn ($item) => "{$item->id}:{$item->status}:{$item->updated_at?->timestamp}")
+                            ->implode(',');
+
+                        return "{$order->id}:{$order->status}:{$order->updated_at?->timestamp}:{$itemsSignature}";
+                    })
                     ->implode('|');
 
                 if ($signature !== $lastSignature) {
@@ -77,6 +83,7 @@ class KitchenController extends Controller
         $order = Order::findOrFail($orderId);
         $oldStatus = $order->status;
         $order->update(['status' => $validated['status']]);
+        $this->syncOrderItemStatus($order, $validated['status']);
 
         // Broadcast to kitchen display system
         broadcast(new \App\Events\OrderStatusChanged($order, $oldStatus));
@@ -105,6 +112,7 @@ class KitchenController extends Controller
         $order = Order::findOrFail($orderId);
         $oldStatus = $order->status;
         $order->update(['status' => 'served', 'actual_completion_time' => now()]);
+        $this->syncOrderItemStatus($order, 'served');
         broadcast(new \App\Events\OrderStatusChanged($order, $oldStatus));
 
         return response()->json($order);
@@ -123,8 +131,44 @@ class KitchenController extends Controller
     private function kitchenQueue()
     {
         return Order::whereNotIn('status', ['served', 'paid', 'cancelled'])
-            ->with('orderItems.food')
+            ->whereHas('orderItems', fn ($items) => $items->where('status', '!=', 'cancelled'))
+            ->with(['orderItems' => fn ($items) => $items->where('status', '!=', 'cancelled')->with('food')])
             ->orderBy('created_at')
-            ->get();
+            ->get()
+            ->map(function ($order) {
+                $this->normalizeKitchenQueueStatus($order);
+                return $order;
+            });
+    }
+
+    private function syncOrderItemStatus(Order $order, string $orderStatus): void
+    {
+        $itemStatus = match ($orderStatus) {
+            'in_progress' => 'preparing',
+            'ready' => 'ready',
+            'served' => 'served',
+            'cancelled' => 'cancelled',
+            default => null,
+        };
+
+        if (!$itemStatus) {
+            return;
+        }
+
+        $order->items()
+            ->where('status', '!=', 'cancelled')
+            ->update(['status' => $itemStatus]);
+    }
+
+    private function normalizeKitchenQueueStatus(Order $order): void
+    {
+        if (in_array($order->status, ['paid', 'cancelled', 'served'], true)) {
+            return;
+        }
+
+        if ($order->orderItems->contains(fn ($item) => $item->status === 'preparing') && $order->status !== 'in_progress') {
+            $order->update(['status' => 'in_progress']);
+            $order->status = 'in_progress';
+        }
     }
 }

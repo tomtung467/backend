@@ -57,7 +57,6 @@ class OrderService
                 $order->source = $data['source'] ?? 'dine_in';
                 $order->save();
             } else {
-                $order->status = 'pending';
                 $order->customer_notes = $data['customer_notes'] ?? $order->customer_notes;
                 $order->special_requests = $data['special_requests'] ?? $order->special_requests;
                 $order->save();
@@ -85,10 +84,13 @@ class OrderService
                 ]);
             }
 
-            $subtotal = $isNewOrder ? $addedPrice : $order->items()->sum('total_price');
+            $subtotal = $isNewOrder
+                ? $addedPrice
+                : $order->items()->where('status', '!=', 'cancelled')->sum('total_price');
             $tax = $subtotal * 0.1; // 10% VAT
             $total = $subtotal + $tax;
 
+            $this->preserveKitchenProgress($order);
             $order->subtotal = $subtotal;
             $order->tax_amount = $tax;
             $order->total_price = $total;
@@ -105,6 +107,24 @@ class OrderService
 
             return $order->fresh()->load('items.food', 'table');
         });
+    }
+
+    private function preserveKitchenProgress(Order $order): void
+    {
+        if (in_array($order->status, ['paid', 'cancelled', 'served'], true)) {
+            return;
+        }
+
+        $activeItems = $order->items()->where('status', '!=', 'cancelled');
+
+        if ((clone $activeItems)->where('status', 'preparing')->exists()) {
+            $order->status = 'in_progress';
+            return;
+        }
+
+        if ((clone $activeItems)->where('status', 'ready')->exists()) {
+            $order->status = 'ready';
+        }
     }
 
     /**
